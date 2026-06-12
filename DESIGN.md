@@ -126,8 +126,6 @@ Expuestas en `GET /metrics` en formato Prometheus. Para alertas de tasa, SLOs de
 | `urlshortener_shorten_duration_milliseconds` | Histograma | Latencia de acortamiento. `_count` da el total de URLs acortadas. |
 | `urlshortener_redirect_duration_milliseconds` | Histograma | Latencia de redirects. `_count` da el total de redirects servidos. |
 
-Las métricas integradas de ASP.NET Core (tasa de solicitudes, duración, etc.) también están disponibles automáticamente vía `AddAspNetCoreInstrumentation()`.
-
 ### Capa 2 — Datos de Analytics (persistidos, en MongoDB)
 
 Cada redirect inserta un documento `ClickEvent` en la Time Series Collection:
@@ -139,9 +137,7 @@ Cada redirect inserta un documento `ClickEvent` en la Time Series Collection:
 }
 ```
 
-Esto permite consultas de series temporales: clicks por hora/día, URLs principales, análisis de tendencias. No hay un endpoint de analytics en esta versión — los datos están listos para consumo futuro.
-
-**Nota de cardinalidad:** las métricas NO usan labels por URL individual. En Prometheus, cada combinación única de labels crea una serie de tiempo nueva. Con millones de URLs distintas, la cardinalidad de labels explotaría (Prometheus tiene límites duros de ~500K series por servidor y se degrada muy mal más allá). Por eso el conteo por URL se almacena en MongoDB, no en Prometheus. Para datos agregados (total de redirects, latencia), Prometheus es la herramienta correcta. Para datos por URL individual, MongoDB.
+Esto permite consultas de series temporales: clicks por hora/día, URLs principales, análisis de tendencias.
 
 ---
 
@@ -178,8 +174,6 @@ Configuración Time Series:
 ---
 
 ## Estrategia de Manejo de Errores
-
-Tres capas, sin sobreingeniería:
 
 | Capa | Mecanismo | Escenario de ejemplo |
 |---|---|---|
