@@ -123,10 +123,8 @@ Expuestas en `GET /metrics` en formato Prometheus. Para alertas de tasa, SLOs de
 
 | Métrica | Tipo | Qué mide |
 |---|---|---|
-| `urlshortener_shorten_duration_milliseconds` | Histograma | Latencia de solicitudes de acortamiento |
-| `urlshortener_redirect_duration_milliseconds` | Histograma | Latencia de búsquedas de redirect |
-| `urlshortener_shorten_total` | Contador | Total de URLs acortadas |
-| `urlshortener_redirect_total` | Contador | Total de redirects servidos |
+| `urlshortener_shorten_duration_milliseconds` | Histograma | Latencia de acortamiento. `_count` da el total de URLs acortadas. |
+| `urlshortener_redirect_duration_milliseconds` | Histograma | Latencia de redirects. `_count` da el total de redirects servidos. |
 
 Las métricas integradas de ASP.NET Core (tasa de solicitudes, duración, etc.) también están disponibles automáticamente vía `AddAspNetCoreInstrumentation()`.
 

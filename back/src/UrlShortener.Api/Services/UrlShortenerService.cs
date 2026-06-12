@@ -13,8 +13,6 @@ public class UrlShortenerService : IUrlShortenerService
     private readonly IMongoCollection<ClickEvent> _clicks;
     private readonly IMongoCollection<CounterDoc> _counters;
     private readonly string _baseUrl;
-    private readonly Counter<long> _shortenCounter;
-    private readonly Counter<long> _redirectCounter;
     private readonly Histogram<double> _shortenDuration;
     private readonly Histogram<double> _redirectDuration;
 
@@ -32,8 +30,6 @@ public class UrlShortenerService : IUrlShortenerService
         _baseUrl = baseUrl.TrimEnd('/');
 
         var meter = meterFactory.Create("urlshortener");
-        _shortenCounter = meter.CreateCounter<long>("urlshortener.shorten.count");
-        _redirectCounter = meter.CreateCounter<long>("urlshortener.redirect.count");
         _shortenDuration = meter.CreateHistogram<double>("urlshortener.shorten.duration",
             unit: "ms");
         _redirectDuration = meter.CreateHistogram<double>("urlshortener.redirect.duration",
@@ -52,7 +48,6 @@ public class UrlShortenerService : IUrlShortenerService
         if (existing is not null)
         {
             sw.Stop();
-            _shortenCounter.Add(1);
             _shortenDuration.Record(sw.Elapsed.TotalMilliseconds);
             return $"{_baseUrl}/{existing.ShortCode}";
         }
@@ -78,7 +73,6 @@ public class UrlShortenerService : IUrlShortenerService
         await _urlMappings.InsertOneAsync(mapping, cancellationToken: ct);
 
         sw.Stop();
-        _shortenCounter.Add(1);
         _shortenDuration.Record(sw.Elapsed.TotalMilliseconds);
 
         return $"{_baseUrl}/{shortCode}";
@@ -105,7 +99,6 @@ public class UrlShortenerService : IUrlShortenerService
             cancellationToken: ct);
 
         sw.Stop();
-        _redirectCounter.Add(1);
         _redirectDuration.Record(sw.Elapsed.TotalMilliseconds);
 
         return mapping.LongUrl;
