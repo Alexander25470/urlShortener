@@ -104,19 +104,6 @@ public class UrlShortenerService : IUrlShortenerService
         return mapping.LongUrl;
     }
 
-    /// <summary>
-    /// Internal model for the atomic counter collection.
-    /// </summary>
-    [BsonIgnoreExtraElements]
-    private class CounterDoc
-    {
-        [BsonId]
-        public string Id { get; set; } = string.Empty;
-
-        [BsonElement("seq")]
-        public long Seq { get; set; }
-    }
-
     // ── Analytics ───────────────────────────────────────────────
 
     public async Task<IReadOnlyList<UrlMapping>> GetAllMappingsAsync(CancellationToken ct = default)

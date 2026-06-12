@@ -51,6 +51,15 @@ builder.Services.AddSingleton<IUrlShortenerService>(sp =>
         meterFactory);
 });
 
+// ── MongoDB initializer ────────────────────────────────────────
+builder.Services.AddSingleton<MongoInitializer>(sp =>
+{
+    var main = sp.GetRequiredService<IMongoClient>();
+    var analytics = sp.GetRequiredKeyedService<IMongoClient>("analytics");
+    var logger = sp.GetRequiredService<ILogger<MongoInitializer>>();
+    return new MongoInitializer(main, analytics, logger);
+});
+
 // ── Controllers & OpenAPI ──────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -77,8 +86,8 @@ builder.Services.AddOpenTelemetry()
 
 var app = builder.Build();
 
-// ── Initialize MongoDB (idempotent, best-effort) ───────────────
-await InitializeMongoAsync(app.Services);
+// ── Initialize MongoDB ─────────────────────────────────────────
+await app.Services.GetRequiredService<MongoInitializer>().InitializeAsync();
 
 // ── Middleware pipeline ────────────────────────────────────────
 if (app.Environment.IsDevelopment())
@@ -94,71 +103,3 @@ app.MapPrometheusScrapingEndpoint();
 app.MapControllers();
 
 app.Run();
-
-// ── MongoDB initialization ─────────────────────────────────────
-static async Task InitializeMongoAsync(IServiceProvider services)
-{
-    try
-    {
-        // Create indexes on main database
-        var mainClient = services.GetRequiredService<IMongoClient>();
-        var mainDb = mainClient.GetDatabase("urlshortener");
-        var urlMappings = mainDb.GetCollection<UrlMapping>("url_mappings");
-
-        await urlMappings.Indexes.CreateManyAsync([
-            new CreateIndexModel<UrlMapping>(
-                Builders<UrlMapping>.IndexKeys.Ascending(m => m.ShortCode),
-                new CreateIndexOptions { Unique = true }),
-            new CreateIndexModel<UrlMapping>(
-                Builders<UrlMapping>.IndexKeys.Ascending(m => m.LongUrl),
-                new CreateIndexOptions { Unique = true })
-        ]);
-
-        // Initialize counter document if not exists
-        var counters = mainDb.GetCollection<CounterDoc>("counters");
-        try
-        {
-            await counters.InsertOneAsync(new CounterDoc { Id = "url_id", Seq = 0 });
-        }
-        catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey)
-        {
-            // Already initialized, ignore
-        }
-
-        // Create Time Series Collection on analytics database
-        var analyticsClient = services.GetRequiredKeyedService<IMongoClient>("analytics");
-        var analyticsDb = analyticsClient.GetDatabase("urlshortener_analytics");
-        try
-        {
-            await analyticsDb.CreateCollectionAsync("clicks", new CreateCollectionOptions
-            {
-                TimeSeriesOptions = new TimeSeriesOptions(
-                    timeField: "timestamp",
-                    metaField: "shortCode",
-                    granularity: TimeSeriesGranularity.Seconds)
-            });
-        }
-        catch (MongoCommandException ex) when (ex.CodeName == "NamespaceExists")
-        {
-            // Already created, ignore
-        }
-    }
-    catch (Exception ex)
-    {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogWarning(ex, "Failed to initialize MongoDB. The app will start but may not function correctly.");
-    }
-}
-
-/// <summary>
-/// Internal model for the atomic counter collection.
-/// </summary>
-[BsonIgnoreExtraElements]
-internal class CounterDoc
-{
-    [BsonId]
-    public string Id { get; set; } = string.Empty;
-
-    [BsonElement("seq")]
-    public long Seq { get; set; }
-}
