@@ -56,6 +56,16 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
+// ── CORS ───────────────────────────────────────────────────────
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.WithOrigins("http://localhost", "http://localhost:80")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials());
+});
+
 // ── OpenTelemetry Metrics ──────────────────────────────────────
 builder.Services.AddOpenTelemetry()
     .WithMetrics(m => m
@@ -76,6 +86,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseExceptionHandler();
+app.UseCors();
 app.MapPrometheusScrapingEndpoint();
 
 app.MapControllers();

@@ -28,9 +28,9 @@ Un acortador de URLs crea un alias corto (ej. `https://short.domain/zn9edcu`) a 
 
 ```mermaid
 graph TD
-    Client[Cliente Navegador/App] -->|POST /shorten| LB[Balanceador de Carga]
-    Client -->|GET /{shortCode}| LB
-    LB --> API[API .NET - UrlShortener.Api]
+    Client[Navegador] -->|http://localhost| Front[front Nginx]
+    Front -->|/api/* /health /metrics| API[.NET API - UrlShortener.Api]
+    Client -->|http://localhost:8080| API
 
     API --> MainDB[(mongodb-main<br/>WiredTiger Cache #1)]
     API --> AnalyticsDB[(mongodb-analytics<br/>WiredTiger Cache #2)]
@@ -110,7 +110,8 @@ sequenceDiagram
 | **Estilo de API** | Controllers (MVC) | Minimal API | Los Controllers proveen un enfoque más estructurado para equipos, con separación clara de definiciones de ruta, enlace de modelos y atributos de validación. Patrón familiar en el ecosistema .NET. |
 | **Manejo de errores** | Estrategia de 3 capas (validación → nullable → middleware) | `Result<T>` / `OneOf` | `null` es suficiente para "no encontrado" en este dominio. El prefijo `Try*` para validación de formato evita excepciones. Un middleware global de exception handler atrapa errores inesperados y devuelve ProblemDetails. `Result<T>` agrega ceremonia sin valor para un servicio con 2 métodos. *Define errors out of existence:* validar en el borde para que los datos inválidos nunca lleguen al núcleo. |
 | **Métricas** | `System.Diagnostics.Metrics` + OpenTelemetry Prometheus exporter | Application Insights / DataDog | Sin vendor lock-in, API estándar de .NET, expone `/metrics` en formato Prometheus. Funciona con cualquier stack de observabilidad. El exporter de Prometheus es liviano — no necesita agente separado. |
-| **Docker** | Build multi-stage + docker-compose | Contenedor único / deploy manual | Entorno reproducible. Docker Compose orquesta los tres servicios (API + 2x MongoDB). Healthchecks aseguran el orden de inicio correcto. |
+| **Docker** | Build multi-stage + docker-compose | Contenedor único / deploy manual | Entorno reproducible. Docker Compose orquesta los cuatro servicios (API + 2x MongoDB + frontend Nginx). Healthchecks aseguran el orden de inicio correcto. El frontend usa Nginx para servir estáticos y hacer proxy reverso a la API, eliminando problemas de CORS en producción. |
+| **CORS** | `AddCors()` con origen `http://localhost` | Proxy reverso en Nginx (sin CORS) | Se configuró CORS en la API para permitir desarrollo local donde el front (puerto 80) y la API (8080) son orígenes distintos. En producción, el proxy reverso de Nginx evita la necesidad de CORS, pero tenerlo configurado no afecta. Es la opción más realista: el equipo de front puede desarrollar contra la API directamente sin depender del proxy.
 
 ---
 

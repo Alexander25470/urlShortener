@@ -28,7 +28,7 @@ services:
 
   api:
     build:
-      context: .
+      context: ./back
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
@@ -43,6 +43,15 @@ services:
         condition: service_healthy
       mongodb-analytics:
         condition: service_healthy
+
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - api
 
 volumes:
   mongo-main-data:
