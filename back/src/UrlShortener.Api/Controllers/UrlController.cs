@@ -32,6 +32,7 @@ public class UrlController : ControllerBase
     /// Configurable between 301 (permanent) and 302 (temporary) via UrlShortener:RedirectType.
     /// </summary>
     [HttpGet("api/v1/{shortCode}")]
+    [HttpGet("{shortCode}")]
     public async Task<IActionResult> Redirect(string shortCode, CancellationToken ct)
     {
         if (!Base62Converter.TryDecode(shortCode, out _))

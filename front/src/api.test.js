@@ -13,7 +13,8 @@ describe("fetchJson", () => {
     });
     const data = await fetchJson("/api/v1/urls");
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      "http://localhost:8080/api/v1/urls"
+      "http://localhost:8080/api/v1/urls",
+      undefined
     );
     expect(data).toEqual([{ shortCode: "0000001" }]);
   });

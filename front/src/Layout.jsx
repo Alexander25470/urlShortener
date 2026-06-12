@@ -13,6 +13,9 @@ export default function Layout() {
           <NavLink to="/top" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
             🏆 Top
           </NavLink>
+          <NavLink to="/new" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}>
+            ➕ Nueva
+          </NavLink>
         </nav>
       </header>
       <main className="content">

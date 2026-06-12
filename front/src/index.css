@@ -21,3 +21,11 @@ h2 { margin-bottom: 16px; font-size: 1.1rem; color: #333; }
 .chart-container { width: 100%; max-height: 300px; height: 250px; }
 .loading, .error { padding: 40px; text-align: center; color: #666; }
 .error { color: #dc2626; }
+
+.create-form { display: flex; gap: 8px; max-width: 600px; margin-bottom: 20px; }
+.url-input { flex: 1; padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: .95rem; }
+.btn { padding: 10px 20px; background: #4f46e5; color: #fff; border: none; border-radius: 6px; font-size: .95rem; cursor: pointer; }
+.btn:disabled { background: #a5b4fc; cursor: not-allowed; }
+.result-box { background: #eef2ff; padding: 14px 18px; border-radius: 8px; display: inline-flex; gap: 8px; align-items: center; }
+.result-label { font-weight: 600; color: #333; font-size: .9rem; }
+.result-url { color: #4f46e5; word-break: break-all; }
