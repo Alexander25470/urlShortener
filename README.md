@@ -79,10 +79,10 @@ VITE_API_URL=http://localhost:8080
 ## Tests
 
 ```bash
-# Back (.NET)
+# Back (.NET) — 53 tests
 cd back && dotnet test
 
-# Front (Vite + Vitest)
+# Front (Vite + Vitest) — 6 tests
 cd front && npm test
 ```
 

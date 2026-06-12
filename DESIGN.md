@@ -296,10 +296,10 @@ Devuelve las URLs más clickeadas en un rango de tiempo.
 
 ```bash
 # Compilar
-dotnet build
+cd back && dotnet build
 
 # Ejecutar tests
-dotnet test
+cd back && dotnet test
 
 # Iniciar todos los servicios
 docker-compose up -d
@@ -310,7 +310,7 @@ curl -X POST http://localhost:8080/api/v1/data/shorten \
   -d '{"longUrl":"https://example.com/a-very-long-url"}'
 
 # Probar redirect
-curl -v http://localhost:8080/zn9edcu
+curl -v http://localhost:8080/api/v1/zn9edcu
 
 # Ver métricas
 curl http://localhost:8080/metrics
