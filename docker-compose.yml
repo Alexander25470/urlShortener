@@ -1,0 +1,49 @@
+services:
+  mongodb-main:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-main-data:/data/db
+      - ./scripts/init-main.js:/docker-entrypoint-initdb.d/init.js:ro
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet --eval
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongodb-analytics:
+    image: mongo:8
+    command: --port 27018
+    ports:
+      - "27018:27018"
+    volumes:
+      - mongo-analytics-data:/data/db
+      - ./scripts/init-analytics.js:/docker-entrypoint-initdb.d/init.js:ro
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --port 27018 --quiet --eval
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - MongoDB__MainConnectionString=mongodb://mongodb-main:27017
+      - MongoDB__AnalyticsConnectionString=mongodb://mongodb-analytics:27018
+      - UrlShortener__BaseUrl=http://localhost:8080
+    depends_on:
+      mongodb-main:
+        condition: service_healthy
+      mongodb-analytics:
+        condition: service_healthy
+
+volumes:
+  mongo-main-data:
+  mongo-analytics-data:
