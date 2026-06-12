@@ -142,7 +142,7 @@ Cada redirect inserta un documento `ClickEvent` en la Time Series Collection:
 
 Esto permite consultas de series temporales: clicks por hora/día, URLs principales, análisis de tendencias. No hay un endpoint de analytics en esta versión — los datos están listos para consumo futuro.
 
-**Nota de cardinalidad:** las métricas NO usan tags por URL. La cardinalidad por URL explotaría los límites de cardinalidad de labels de Prometheus. Para datos por URL, usar la colección `clicks` de MongoDB.
+**Nota de cardinalidad:** las métricas NO usan labels por URL individual. En Prometheus, cada combinación única de labels crea una serie de tiempo nueva. Con millones de URLs distintas, la cardinalidad de labels explotaría (Prometheus tiene límites duros de ~500K series por servidor y se degrada muy mal más allá). Por eso el conteo por URL se almacena en MongoDB, no en Prometheus. Para datos agregados (total de redirects, latencia), Prometheus es la herramienta correcta. Para datos por URL individual, MongoDB.
 
 ---
 
