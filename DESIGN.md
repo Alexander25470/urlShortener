@@ -1,95 +1,95 @@
-# URL Shortener — Design Document
+# URL Shortener — Documento de Diseño
 
-## Problem Statement
+## Planteamiento del Problema
 
-System taken from **"System Design Interview — An Insider's Guide" (Volume 1), Chapter 8: Design A URL Shortener**.
+Sistema extraído del libro **"System Design Interview — An Insider's Guide" (Volumen 1), Capítulo 8: Design A URL Shortener**.
 
-A URL shortener creates a short alias (e.g. `https://short.domain/zn9edcu`) for a given long URL. When a user clicks the short URL, they are redirected to the original long URL.
+Un acortador de URLs crea un alias corto (ej. `https://short.domain/zn9edcu`) a partir de una URL larga. Cuando un usuario hace clic en la URL corta, es redirigido a la URL original larga.
 
-### Requirements
+### Requisitos
 
-| Requirement | Detail |
+| Requisito | Detalle |
 |---|---|
-| URL shortening | `POST /api/v1/data/shorten` → returns short URL |
-| URL redirecting | `GET /api/v1/{shortCode}` → 301/302 redirect to long URL |
-| Short URL characters | `[0-9, a-z, A-Z]` (62 possible characters) |
-| Short URL length | 7 characters (62⁷ ≈ 3.5 trillion, enough for 365B records) |
-| Write volume | 100 million URLs/day ≈ 1,160 writes/s |
-| Read volume | 10:1 read/write ratio ≈ 11,600 reads/s |
-| Storage (10 years) | 365 billion records ≈ 365 TB |
-| Short URLs are immutable | Cannot be deleted or updated |
-| Redirect type configurable | 301 (permanent) or 302 (temporary) via environment variable |
+| Acortamiento | `POST /api/v1/data/shorten` → devuelve URL corta |
+| Redirección | `GET /api/v1/{shortCode}` → redirect 301/302 a la URL larga |
+| Caracteres permitidos | `[0-9, a-z, A-Z]` (62 caracteres posibles) |
+| Longitud de URL corta | 7 caracteres (62⁷ ≈ 3.5 billones, suficiente para 365B registros) |
+| Volumen de escritura | 100 millones de URLs/día ≈ 1.160 escrituras/s |
+| Volumen de lectura | Proporción 10:1 lectura/escritura ≈ 11.600 lecturas/s |
+| Almacenamiento (10 años) | 365 mil millones de registros ≈ 365 TB |
+| URLs inmutables | No se pueden eliminar ni actualizar |
+| Tipo de redirect configurable | 301 (permanente) o 302 (temporal) vía variable de entorno |
 
 ---
 
-## Architecture Overview
+## Visión General de la Arquitectura
 
-### System Diagram
+### Diagrama del Sistema
 
 ```mermaid
 graph TD
-    Client[Client Browser/App] -->|POST /shorten| LB[Load Balancer]
+    Client[Cliente Navegador/App] -->|POST /shorten| LB[Balanceador de Carga]
     Client -->|GET /{shortCode}| LB
-    LB --> API[.NET API - UrlShortener.Api]
+    LB --> API[API .NET - UrlShortener.Api]
 
     API --> MainDB[(mongodb-main<br/>WiredTiger Cache #1)]
     API --> AnalyticsDB[(mongodb-analytics<br/>WiredTiger Cache #2)]
 
-    subgraph MainDB["mongodb-main (port 27017)"]
+    subgraph MainDB["mongodb-main (puerto 27017)"]
         UrlMappings[(url_mappings<br/>shortCode ↔ longUrl)]
-        Counters[(counters<br/>atomic ID sequence)]
+        Counters[(counters<br/>secuencia atómica de IDs)]
     end
 
-    subgraph AnalyticsDB["mongodb-analytics (port 27018)"]
+    subgraph AnalyticsDB["mongodb-analytics (puerto 27018)"]
         Clicks[(clicks<br/>Time Series Collection)]
     end
 
     API -->|/metrics| Prometheus[Prometheus Scraper]
 ```
 
-### URL Shortening Flow
+### Flujo de Acortamiento
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
+    participant C as Cliente
     participant API as API
     participant M as mongodb-main
     participant A as mongodb-analytics
 
     C->>API: POST /api/v1/data/shorten { longUrl }
-    API->>M: Find by longUrl (idempotency check)
-    M-->>API: Existing shortCode or null
+    API->>M: Buscar por longUrl (verificación de idempotencia)
+    M-->>API: shortCode existente o null
 
-    alt URL already exists
+    alt URL ya existe
         API-->>C: 200 { shortUrl: "..." }
-    else New URL
+    else URL nueva
         API->>M: FindOneAndUpdate({ _id: "url_id" }, $inc: { seq: 1 })
         M-->>API: newId
-        API->>API: Base62.Encode(newId) → shortCode (7 chars)
-        API->>M: Insert { Id, ShortCode, LongUrl, CreatedAt }
+        API->>API: Base62.Encode(newId) → shortCode (7 caracteres)
+        API->>M: Insertar { Id, ShortCode, LongUrl, CreatedAt }
         API-->>C: 200 { shortUrl: "https://short.domain/{shortCode}" }
     end
 ```
 
-### URL Redirecting Flow
+### Flujo de Redirección
 
 ```mermaid
 sequenceDiagram
-    participant C as Client
+    participant C as Cliente
     participant API as API
     participant M as mongodb-main
     participant A as mongodb-analytics
 
     C->>API: GET /api/v1/{shortCode}
     API->>API: Base62.TryDecode(shortCode)
-    alt Invalid shortCode
+    alt shortCode inválido
         API-->>C: 400 Bad Request
-    else Valid format
-        API->>M: Find by shortCode
-        alt Not found
+    else Formato válido
+        API->>M: Buscar por shortCode
+        alt No encontrado
             API-->>C: 404 Not Found
-        else Found
-            API->>A: Insert ClickEvent { shortCode, timestamp }
+        else Encontrado
+            API->>A: Insertar ClickEvent { shortCode, timestamp }
             API-->>C: 301/302 Redirect → Location: longUrl
         end
     end
@@ -97,41 +97,41 @@ sequenceDiagram
 
 ---
 
-## Design Decisions
+## Decisiones de Diseño
 
-| Decision | Chosen approach | Alternatives | Rationale |
+| Decisión | Opción elegida | Alternativas | Justificación |
 |---|---|---|---|
-| **Hash function** | Base 62 conversion | CRC32 / MD5 / SHA-1 + collision resolution | No collisions (bijective). Simple math. Each long URL maps to a unique short code deterministically via its numeric ID. Deep module: the converter has a tiny API surface but encapsulates non-trivial math. |
-| **Storage engine** | MongoDB (WiredTiger) | Relational DB (PostgreSQL) + Redis cache | WiredTiger provides built-in caching (default 50% RAM - 1GB), eliminating the need for a separate Redis/cache layer. Simplifies the stack while keeping reads fast at this scale (~11.6K req/s). |
-| **Two mongod instances vs one with two collections** | Two independent `mongod` processes | Single `mongod` with separate databases | **Key architectural decision.** WiredTiger allocates its cache per `mongod` process, not per database. If `clicks` (high write volume) and `url_mappings` (high read volume) shared the same cache, inserts would evict URL mapping pages, degrading redirect latency. Two separate instances guarantee complete cache isolation, each with its own WiredTiger pool + OS filesystem cache. They run in the same Docker network (latency sub-millisecond) and require minimal extra resources. This is the correct design for production — the cost of one extra container is negligible vs. the cost of cache contention at scale. |
-| **ID generation** | MongoDB atomic counter (`$inc`) | Snowflake / UUID / ObjectId | For a single-mongod setup, an atomic counter on a dedicated `counters` collection is the simplest correct solution. It's a single `FindOneAndUpdate` + `$inc` — no external dependencies, no clock synchronization. Snowflake would be needed only in a sharded/clustered environment. Pull complexity downward: the caller doesn't know or care how IDs are generated. |
-| **Click analytics** | Time Series Collection (separate `mongod`) | `clickCount` field on URL mapping | A simple counter per URL is insufficient for time-series analysis. Storing individual `{ shortCode, timestamp }` events in a MongoDB Time Series Collection enables queries like clicks per hour/day, trending URLs, etc. Time Series Collections use zstd compression (~70% space savings) and automatic bucketing. The separate `mongod` prevents analytics writes from polluting the main cache. |
-| **Redirect type** | Configurable (301/302) via env var | Hardcoded | The book discusses both: 301 (permanent, cached by browser, less server load) vs 302 (temporary, more analytics-friendly). Making it configurable allows the operator to choose per-deployment without code changes. |
-| **API style** | Controllers (MVC) | Minimal API | Controllers provide a more structured approach for teams, with clear separation of route definitions, model binding, and validation attributes. Familiar pattern in the .NET ecosystem. |
-| **Error handling** | 3-layer strategy (validation → nullable → middleware) | `Result<T>` / `OneOf` | `null` is sufficient for "not found" in this domain. `Try*` prefix for format validation avoids exceptions. A global exception handler middleware catches unexpected errors and returns ProblemDetails. `Result<T>` adds ceremony without value for a service with 2 methods. *Define errors out of existence:* validate at the edge so invalid data never reaches the core. |
-| **Metrics** | `System.Diagnostics.Metrics` + OpenTelemetry Prometheus exporter | Application Insights / DataDog | Zero vendor lock-in, standard .NET API, exposes `/metrics` in Prometheus format. Works with any observability stack. The Prometheus exporter is lightweight — no separate agent needed. |
-| **Docker** | Multi-stage build + docker-compose | Single container / manual deploy | Reproducible environment. Docker Compose orchaestrates all three services (API + 2x MongoDB). Healthchecks ensure proper startup ordering. |
+| **Función hash** | Conversión Base 62 | CRC32 / MD5 / SHA-1 + resolución de colisiones | Sin colisiones (biyectiva). Matemática simple. Cada URL larga se mapea a un short code único a través de su ID numérico. Módulo profundo: el conversor tiene una superficie de API mínima pero encapsula matemática no trivial. |
+| **Motor de almacenamiento** | MongoDB (WiredTiger) | BD relacional (PostgreSQL) + Redis cache | WiredTiger provee cache integrada (por defecto 50% de RAM - 1GB), eliminando la necesidad de una capa separada de Redis. Simplifica el stack manteniendo lecturas rápidas a esta escala (~11.6K req/s). |
+| **Dos instancias mongod vs. una con dos colecciones** | Dos procesos `mongod` independientes | Un solo `mongod` con bases de datos separadas | **Decisión arquitectónica clave.** WiredTiger asigna su cache por proceso `mongod`, no por base de datos. Si `clicks` (alto volumen de escritura) y `url_mappings` (alto volumen de lectura) compartieran la misma cache, los inserts desplazarían páginas de URL mappings, degradando la latencia de redirects. Dos instancias separadas garantizan aislamiento total de cache, cada una con su propio pool WiredTiger + filesystem cache del SO. Se ejecutan en la misma red Docker (latencia submilisegundo) y requieren recursos extra mínimos. Es el diseño correcto para producción — el costo de un contenedor extra es despreciable vs. el costo de contención de cache a escala. |
+| **Generación de IDs** | Contador atómico MongoDB (`$inc`) | Snowflake / UUID / ObjectId | Para una configuración de un solo mongod, un contador atómico en una colección `counters` dedicada es la solución correcta más simple. Es un solo `FindOneAndUpdate` + `$inc` — sin dependencias externas, sin sincronización de reloj. Snowflake sería necesario solo en un entorno clusterizado/shardeado. Complejidad hacia abajo: quien llama no sabe ni le importa cómo se generan los IDs. |
+| **Analytics de clicks** | Time Series Collection (mongod separado) | Campo `clickCount` en el mapping de URL | Un contador simple por URL es insuficiente para análisis de series temporales. Almacenar eventos individuales `{ shortCode, timestamp }` en una Time Series Collection de MongoDB permite consultas como clicks por hora/día, URLs con tendencia, etc. Las Time Series Collections usan compresión zstd (~70% de ahorro de espacio) y bucketing automático. El mongod separado evita que las escrituras de analytics contaminen la cache principal. |
+| **Tipo de redirect** | Configurable (301/302) vía env var | Hardcoded | El libro discute ambos: 301 (permanente, cacheado por el navegador, menos carga en el servidor) vs. 302 (temporal, más amigable para analytics). Hacerlo configurable permite al operador elegir por despliegue sin cambios de código. |
+| **Estilo de API** | Controllers (MVC) | Minimal API | Los Controllers proveen un enfoque más estructurado para equipos, con separación clara de definiciones de ruta, enlace de modelos y atributos de validación. Patrón familiar en el ecosistema .NET. |
+| **Manejo de errores** | Estrategia de 3 capas (validación → nullable → middleware) | `Result<T>` / `OneOf` | `null` es suficiente para "no encontrado" en este dominio. El prefijo `Try*` para validación de formato evita excepciones. Un middleware global de exception handler atrapa errores inesperados y devuelve ProblemDetails. `Result<T>` agrega ceremonia sin valor para un servicio con 2 métodos. *Define errors out of existence:* validar en el borde para que los datos inválidos nunca lleguen al núcleo. |
+| **Métricas** | `System.Diagnostics.Metrics` + OpenTelemetry Prometheus exporter | Application Insights / DataDog | Sin vendor lock-in, API estándar de .NET, expone `/metrics` en formato Prometheus. Funciona con cualquier stack de observabilidad. El exporter de Prometheus es liviano — no necesita agente separado. |
+| **Docker** | Build multi-stage + docker-compose | Contenedor único / deploy manual | Entorno reproducible. Docker Compose orquesta los tres servicios (API + 2x MongoDB). Healthchecks aseguran el orden de inicio correcto. |
 
 ---
 
-## Metrics Strategy
+## Estrategia de Métricas
 
-### Layer 1 — Operational Metrics (in-memory, via OpenTelemetry)
+### Capa 1 — Métricas Operacionales (en memoria, vía OpenTelemetry)
 
-Exposed at `GET /metrics` in Prometheus format. For rate alerts, latency SLOs, and capacity planning.
+Expuestas en `GET /metrics` en formato Prometheus. Para alertas de tasa, SLOs de latencia y planificación de capacidad.
 
-| Metric | Type | What it measures |
+| Métrica | Tipo | Qué mide |
 |---|---|---|
-| `urlshortener_shorten_duration_milliseconds` | Histogram | Latency of shortening requests |
-| `urlshortener_redirect_duration_milliseconds` | Histogram | Latency of redirect lookups |
-| `urlshortener_shorten_total` | Counter | Total URLs shortened |
-| `urlshortener_redirect_total` | Counter | Total redirects served |
+| `urlshortener_shorten_duration_milliseconds` | Histograma | Latencia de solicitudes de acortamiento |
+| `urlshortener_redirect_duration_milliseconds` | Histograma | Latencia de búsquedas de redirect |
+| `urlshortener_shorten_total` | Contador | Total de URLs acortadas |
+| `urlshortener_redirect_total` | Contador | Total de redirects servidos |
 
-ASP.NET Core's built-in metrics (request rate, duration, etc.) are also automatically available via `AddAspNetCoreInstrumentation()`.
+Las métricas integradas de ASP.NET Core (tasa de solicitudes, duración, etc.) también están disponibles automáticamente vía `AddAspNetCoreInstrumentation()`.
 
-### Layer 2 — Analytics Data (persisted, in MongoDB)
+### Capa 2 — Datos de Analytics (persistidos, en MongoDB)
 
-Each redirect inserts a `ClickEvent` document into the Time Series Collection:
+Cada redirect inserta un documento `ClickEvent` en la Time Series Collection:
 
 ```json
 {
@@ -140,13 +140,13 @@ Each redirect inserts a `ClickEvent` document into the Time Series Collection:
 }
 ```
 
-This enables time-series queries: clicks per hour/day, top URLs, trend analysis. There is no analytics API endpoint in this version — the data is ready for future consumption.
+Esto permite consultas de series temporales: clicks por hora/día, URLs principales, análisis de tendencias. No hay un endpoint de analytics en esta versión — los datos están listos para consumo futuro.
 
-**Cardinality note:** metrics do NOT use per-URL tags. Per-URL cardinality would explode Prometheus label cardinality limits. For per-URL data, use the MongoDB `clicks` collection.
+**Nota de cardinalidad:** las métricas NO usan tags por URL. La cardinalidad por URL explotaría los límites de cardinalidad de labels de Prometheus. Para datos por URL, usar la colección `clicks` de MongoDB.
 
 ---
 
-## Data Model
+## Modelo de Datos
 
 ### `urlshortener.url_mappings`
 
@@ -159,9 +159,9 @@ This enables time-series queries: clicks per hour/day, top URLs, trend analysis.
 }
 ```
 
-Indexes:
-- `{ shortCode: 1 }` (unique) — fast redirect lookup
-- `{ longUrl: 1 }` (unique) — fast idempotency check
+Índices:
+- `{ shortCode: 1 }` (único) — búsqueda rápida de redirect
+- `{ longUrl: 1 }` (único) — verificación rápida de idempotencia
 
 ### `urlshortener.counters`
 
@@ -171,44 +171,44 @@ Indexes:
 
 ### `urlshortener_analytics.clicks` (Time Series Collection)
 
-Time Series configuration:
+Configuración Time Series:
 - `timeField`: `"timestamp"`
 - `metaField`: `"shortCode"`
 - `granularity`: `"seconds"`
 
 ---
 
-## Error Handling Strategy
+## Estrategia de Manejo de Errores
 
-Three layers, no overengineering:
+Tres capas, sin sobreingeniería:
 
-| Layer | Mechanism | Example scenario |
+| Capa | Mecanismo | Escenario de ejemplo |
 |---|---|---|
-| **1. Edge validation** (Controller) | Data annotations (`[Required]`, `[Url]`), `ModelState.IsValid`, `Base62Converter.TryDecode` | Malformed URL → 400 before touching the service |
-| **2. Safe types** (Service) | `TryDecode` instead of throwing, nullable returns instead of exceptions | Invalid shortCode → `false`, not a `FormatException` |
-| **3. Global middleware** (Pipeline) | `UseExceptionHandler` + `ProblemDetails` | MongoDB unreachable → 500 with structured error detail (verbose in development) |
+| **1. Validación en borde** (Controller) | Data annotations (`[Required]`, `[Url]`), `ModelState.IsValid`, `Base62Converter.TryDecode` | URL malformada → 400 antes de tocar el servicio |
+| **2. Tipos seguros** (Service) | `TryDecode` en vez de lanzar excepción, retornos nullable en vez de excepciones | shortCode inválido → `false`, no un `FormatException` |
+| **3. Middleware global** (Pipeline) | `UseExceptionHandler` + `ProblemDetails` | MongoDB inalcanzable → 500 con detalle estructurado (verbose en development) |
 
-No `Result<T>`, no `OneOf`, no custom exception types. *Define errors out of existence:* the controller catches format errors before they propagate; the service uses types that make invalid states unrepresentable; the middleware is the safety net for truly unexpected failures.
+Sin `Result<T>`, sin `OneOf`, sin tipos de excepción personalizados. *Define errors out of existence:* el controller atrapa errores de formato antes de que se propaguen; el servicio usa tipos que hacen imposibles los estados inválidos; el middleware es la red de seguridad para fallos realmente inesperados.
 
 ---
 
-## API Reference
+## Referencia de API
 
 ### POST /api/v1/data/shorten
 
-Creates a short URL for the given long URL. Idempotent — calling with the same `longUrl` returns the same `shortUrl`.
+Crea una URL corta para la URL larga dada. Idempotente — llamar con la misma `longUrl` devuelve la misma `shortUrl`.
 
-**Request:**
+**Solicitud:**
 ```json
 { "longUrl": "https://en.wikipedia.org/wiki/Systems_design" }
 ```
 
-**Success (200):**
+**Éxito (200):**
 ```json
 { "shortUrl": "http://localhost:8080/zn9edcu" }
 ```
 
-**Validation error (400):**
+**Error de validación (400):**
 ```json
 {
   "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
@@ -220,70 +220,70 @@ Creates a short URL for the given long URL. Idempotent — calling with the same
 
 ### GET /api/v1/{shortCode}
 
-Redirects to the original long URL.
+Redirige a la URL larga original.
 
-| Status | When | Response |
+| Estado | Cuándo | Respuesta |
 |---|---|---|
-| **301 or 302** | Short code exists | `Location: <longUrl>` (no body) |
-| **400** | Invalid short code format | ProblemDetails |
-| **404** | Valid format but not found | ProblemDetails |
+| **301 o 302** | shortCode existe | `Location: <longUrl>` (sin cuerpo) |
+| **400** | Formato de shortCode inválido | ProblemDetails |
+| **404** | Formato válido pero no encontrado | ProblemDetails |
 
 ### GET /health
 
-**200 OK** — Used by Docker healthcheck and load balancer probes.
+**200 OK** — Usado por el healthcheck de Docker y sondas del balanceador de carga.
 
 ---
 
-## Trade-offs & Simplifications
+## Compromisos y Simplificaciones
 
-| Excluded | Why | What it would take to add |
+| Excluido | Por qué | Qué haría falta para agregarlo |
 |---|---|---|
-| **Rate limiter** | Not selected by the user. Would prevent abuse | Integrate `AspNetCoreRateLimit` or a token-bucket middleware |
-| **Analytics API** | No endpoint to query `clicks` data yet | Add `GET /api/v1/{shortCode}/analytics` endpoint |
-| **Redis cache** | WiredTiger provides sufficient caching at this scale | Add `IDistributedCache` with Redis for hot URL lookups |
-| **Authentication** | Out of scope for the challenge | Add JWT bearer + API key middleware |
-| **Database sharding** | Single-node setup; sharding adds complexity | Add MongoDB shard key on `shortCode` for `url_mappings`, time-based for `clicks` |
-| **Frontend/UI** | API-only | Add a simple SPA (React/Vue) or Razor Pages form |
-| **CI/CD** | Manual deployment | Add GitHub Actions + Docker registry push |
-| **Prometheus/Grafana** | Only the `/metrics` endpoint is exposed | Add `prometheus` + `grafana` services to `docker-compose.yml` |
-| **Swagger in production** | Development only | Change `if (env.IsDevelopment())` guard |
+| **Rate limiter** | No seleccionado por el usuario. Preveniría abusos | Integrar `AspNetCoreRateLimit` o un middleware token-bucket |
+| **API de analytics** | No hay endpoint para consultar datos de `clicks` aún | Agregar endpoint `GET /api/v1/{shortCode}/analytics` |
+| **Redis cache** | WiredTiger proporciona cache suficiente a esta escala | Agregar `IDistributedCache` con Redis para búsquedas de URLs populares |
+| **Autenticación** | Fuera del alcance del desafío | Agregar JWT bearer + middleware de API key |
+| **Sharding de BD** | Configuración de un solo nodo; sharding agrega complejidad | Agregar shard key de MongoDB en `shortCode` para `url_mappings`, basado en tiempo para `clicks` |
+| **Frontend/UI** | Solo API | Agregar un SPA simple (React/Vue) o un formulario Razor Pages |
+| **CI/CD** | Despliegue manual | Agregar GitHub Actions + push a Docker registry |
+| **Prometheus/Grafana** | Solo el endpoint `/metrics` está expuesto | Agregar servicios `prometheus` + `grafana` al `docker-compose.yml` |
+| **Swagger en producción** | Solo Development | Cambiar el guardia `if (env.IsDevelopment())` |
 
 ---
 
-## Local Development
+## Desarrollo Local
 
 ```bash
-# Build
+# Compilar
 dotnet build
 
-# Run tests
+# Ejecutar tests
 dotnet test
 
-# Start all services
+# Iniciar todos los servicios
 docker-compose up -d
 
-# Test shortening
+# Probar acortamiento
 curl -X POST http://localhost:8080/api/v1/data/shorten \
   -H 'Content-Type: application/json' \
   -d '{"longUrl":"https://example.com/a-very-long-url"}'
 
-# Test redirect
+# Probar redirect
 curl -v http://localhost:8080/zn9edcu
 
-# Check metrics
+# Ver métricas
 curl http://localhost:8080/metrics
 
-# Check click events in analytics DB
+# Ver eventos de click en la BD de analytics
 mongosh mongodb://localhost:27018/urlshortener_analytics \
   --eval 'db.clicks.countDocuments({shortCode:"zn9edcu"})'
 ```
 
 ---
 
-## References
+## Referencias
 
-1. Alex Xu — *System Design Interview — An Insider's Guide* (Volume 1), Chapter 8: Design A URL Shortener
-2. John Ousterhout — *A Philosophy of Software Design* (2nd Edition)
+1. Alex Xu — *System Design Interview — An Insider's Guide* (Volumen 1), Capítulo 8: Design A URL Shortener
+2. John Ousterhout — *A Philosophy of Software Design* (2ª Edición)
 3. MongoDB — [Time Series Collections](https://www.mongodb.com/docs/manual/core/timeseries-collections/)
 4. MongoDB — [WiredTiger Storage Engine](https://www.mongodb.com/docs/manual/core/wiredtiger/)
 5. OpenTelemetry .NET — [Metrics API](https://opentelemetry.io/docs/languages/net/instrumentation/)
