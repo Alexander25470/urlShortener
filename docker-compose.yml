@@ -38,6 +38,7 @@ services:
       - MongoDB__MainConnectionString=mongodb://mongodb-main:27017
       - MongoDB__AnalyticsConnectionString=mongodb://mongodb-analytics:27018
       - UrlShortener__BaseUrl=http://localhost:8080
+      - Cors__Origins__0=http://localhost
     depends_on:
       mongodb-main:
         condition: service_healthy

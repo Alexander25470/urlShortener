@@ -57,13 +57,15 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
 // ── CORS ───────────────────────────────────────────────────────
+var corsOrigins = builder.Configuration.GetSection("Cors:Origins")
+    .Get<string[]>() ?? ["http://localhost"];
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
-        policy.WithOrigins("http://localhost", "http://localhost:80")
+        policy.WithOrigins(corsOrigins)
               .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials());
+              .AllowAnyMethod());
 });
 
 // ── OpenTelemetry Metrics ──────────────────────────────────────
