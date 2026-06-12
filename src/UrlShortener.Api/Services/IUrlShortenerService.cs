@@ -1,3 +1,5 @@
+using UrlShortener.Api.Models;
+
 namespace UrlShortener.Api.Services;
 
 /// <summary>
@@ -18,4 +20,28 @@ public interface IUrlShortenerService
     /// Also records a click event for analytics.
     /// </summary>
     Task<string?> GetLongUrlAsync(string shortCode, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns all URL mappings, newest first.
+    /// </summary>
+    Task<IReadOnlyList<UrlMapping>> GetAllMappingsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns click stats for a shortCode, bucketed by the specified time unit.
+    /// Bucket values: "minute", "hour", or "day".
+    /// </summary>
+    Task<IReadOnlyList<ClickBucket>> GetClickStatsAsync(
+        string shortCode, DateTime from, DateTime to, string bucket, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the top N most clicked URLs in the given time range.
+    /// </summary>
+    Task<IReadOnlyList<TopUrlStat>> GetTopUrlsAsync(
+        int limit, DateTime from, DateTime to, CancellationToken ct = default);
 }
+
+// ── DTOs ───────────────────────────────────────────────────────
+
+public record ClickBucket(DateTime Timestamp, long Count);
+
+public record TopUrlStat(string ShortCode, string LongUrl, long ClickCount);

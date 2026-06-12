@@ -232,6 +232,71 @@ Redirige a la URL larga original.
 
 **200 OK** — Usado por el healthcheck de Docker y sondas del balanceador de carga.
 
+### GET /api/v1/urls
+
+Lista todas las URLs acortadas, ordenadas de más reciente a más antigua.
+
+**Éxito (200):**
+```json
+[
+  { "shortCode": "zn9edcu", "longUrl": "https://...", "createdAt": "2026-06-12T10:00:00Z" },
+  ...
+]
+```
+
+### GET /api/v1/{shortCode}/clicks
+
+Devuelve el conteo de clicks de una URL agrupado por unidad de tiempo. Ideal para gráficos.
+
+**Parámetros query:**
+
+| Parámetro | Tipo | Default | Descripción |
+|---|---|---|---|
+| `from` | `DateTime` | `now - 30d` | Inicio del rango |
+| `to` | `DateTime` | `now` | Fin del rango |
+| `bucket` | `string` | `"hour"` | Unidad de agrupación: `minute`, `hour` o `day` |
+
+**Éxito (200):**
+```json
+{
+  "shortCode": "zn9edcu",
+  "from": "2026-06-01T00:00:00Z",
+  "to": "2026-06-12T00:00:00Z",
+  "bucket": "day",
+  "data": [
+    { "timestamp": "2026-06-01T00:00:00Z", "count": 15 },
+    { "timestamp": "2026-06-02T00:00:00Z", "count": 42 }
+  ]
+}
+```
+
+**Error (400):** shortCode inválido o `bucket` no es `minute`, `hour` o `day`.
+
+### GET /api/v1/analytics/top
+
+Devuelve las URLs más clickeadas en un rango de tiempo.
+
+**Parámetros query:**
+
+| Parámetro | Tipo | Default | Descripción |
+|---|---|---|---|
+| `limit` | `int` | `10` | Cantidad de resultados (máx. 100) |
+| `from` | `DateTime` | `now - 7d` | Inicio del rango |
+| `to` | `DateTime` | `now` | Fin del rango |
+
+**Éxito (200):**
+```json
+{
+  "from": "2026-06-05T00:00:00Z",
+  "to": "2026-06-12T00:00:00Z",
+  "limit": 5,
+  "data": [
+    { "shortCode": "zn9edcu", "longUrl": "https://...", "clickCount": 150 },
+    ...
+  ]
+}
+```
+
 ---
 
 ## Compromisos y Simplificaciones
@@ -239,7 +304,6 @@ Redirige a la URL larga original.
 | Excluido | Por qué | Qué haría falta para agregarlo |
 |---|---|---|
 | **Rate limiter** | No seleccionado por el usuario. Preveniría abusos | Integrar `AspNetCoreRateLimit` o un middleware token-bucket |
-| **API de analytics** | No hay endpoint para consultar datos de `clicks` aún | Agregar endpoint `GET /api/v1/{shortCode}/analytics` |
 | **Redis cache** | WiredTiger proporciona cache suficiente a esta escala | Agregar `IDistributedCache` con Redis para búsquedas de URLs populares |
 | **Autenticación** | Fuera del alcance del desafío | Agregar JWT bearer + middleware de API key |
 | **Sharding de BD** | Configuración de un solo nodo; sharding agrega complejidad | Agregar shard key de MongoDB en `shortCode` para `url_mappings`, basado en tiempo para `clicks` |
