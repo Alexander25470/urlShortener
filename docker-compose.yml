@@ -1,6 +1,7 @@
 services:
   mongodb-main:
     image: mongo:8
+    command: --wiredTigerCacheSizeGB 1
     ports:
       - "27017:27017"
     volumes:
@@ -11,10 +12,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   mongodb-analytics:
     image: mongo:8
-    command: --port 27018
+    command: --port 27018 --wiredTigerCacheSizeGB 1
+    deploy:
+      resources:
+        limits:
+          memory: 2g
     ports:
       - "27018:27018"
     volumes:
