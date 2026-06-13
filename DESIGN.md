@@ -11,7 +11,7 @@ Un acortador de URLs crea un alias corto (ej. `https://short.domain/zn9edcu`) a 
 | Requisito | Detalle |
 |---|---|
 | Acortamiento | `POST /api/v1/data/shorten` → devuelve URL corta |
-| Redirección | `GET /api/v1/{shortCode}` → redirect 301/302 a la URL larga |
+| Redirección | `GET /{shortCode}` (o `GET /api/v1/{shortCode}`) → redirect 301/302 a la URL larga |
 | Caracteres permitidos | `[0-9, a-z, A-Z]` (62 caracteres posibles) |
 | Longitud de URL corta | 7 caracteres (62⁷ ≈ 3.5 billones, suficiente para 365B registros) |
 | Volumen de escritura | 100 millones de URLs/día ≈ 1.160 escrituras/s |
@@ -97,7 +97,7 @@ sequenceDiagram
     participant M as mongodb-main
     participant A as mongodb-analytics
 
-    C->>API: GET /api/v1/{shortCode}
+    C->>API: GET /{shortCode} (o GET /api/v1/{shortCode})
     API->>API: Base62.TryDecode(shortCode)
     alt shortCode inválido
         API-->>C: 400 Bad Request
@@ -228,9 +228,11 @@ Crea una URL corta para la URL larga dada. Idempotente — llamar con la misma `
 }
 ```
 
-### GET /api/v1/{shortCode}
+### GET /{shortCode} (y /api/v1/{shortCode})
 
-Redirige a la URL larga original.
+Redirige a la URL larga original. Ambas rutas funcionan:
+- `GET http://localhost:8080/zn9edcu` — ruta canónica
+- `GET http://localhost:8080/api/v1/zn9edcu` — ruta versionada (compatible con otros endpoints)
 
 | Estado | Cuándo | Respuesta |
 |---|---|---|
