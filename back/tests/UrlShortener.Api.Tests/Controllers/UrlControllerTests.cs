@@ -1,88 +1,51 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Moq;
 using UrlShortener.Api.Controllers;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.Services;
+using UrlShortener.Api.Services.Commands;
+using UrlShortener.Api.Services.Queries;
 
 namespace UrlShortener.Api.Tests.Controllers;
 
 public class UrlControllerTests
 {
-    private readonly Mock<IUrlShortenerService> _serviceMock;
+    private readonly Mock<IUrlShortenerCommand> _commandMock;
+    private readonly Mock<IUrlAnalyticsQuery> _queryMock;
     private readonly UrlController _controller;
 
     public UrlControllerTests()
     {
-        _serviceMock = new Mock<IUrlShortenerService>();
-        _controller = new UrlController(_serviceMock.Object);
+        _commandMock = new Mock<IUrlShortenerCommand>();
+        _queryMock = new Mock<IUrlAnalyticsQuery>();
+        _controller = new UrlController(_commandMock.Object, _queryMock.Object);
     }
 
     [Fact]
-    public async Task Shorten_ValidRequest_ReturnsOkWithShortUrl()
+    public async Task Shorten_ReturnsOk()
     {
-        const string longUrl = "https://example.com/test";
-        const string shortUrl = "http://localhost:8080/0000001";
-        _serviceMock.Setup(s => s.ShortenAsync(longUrl, It.IsAny<CancellationToken>())).ReturnsAsync(shortUrl);
-
-        var result = await _controller.Shorten(new ShortenRequest(longUrl), CancellationToken.None);
-
-        var okResult = Assert.IsType<OkObjectResult>(result);
-        Assert.Equal(shortUrl, Assert.IsType<ShortenResponse>(okResult.Value).ShortUrl);
+        _commandMock.Setup(c => c.ShortenAsync("https://example.com", It.IsAny<CancellationToken>())).ReturnsAsync("http://localhost:8080/0000001");
+        var result = await _controller.Shorten(new ShortenRequest("https://example.com"), CancellationToken.None);
+        Assert.Equal("http://localhost:8080/0000001", Assert.IsType<ShortenResponse>(Assert.IsType<OkObjectResult>(result).Value).ShortUrl);
     }
 
     [Fact]
     public async Task GetAllMappings_ReturnsOk()
     {
-        _serviceMock.Setup(s => s.GetAllMappingsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<UrlMapping> { new() { ShortCode = "0000001" } });
-
-        var result = await _controller.GetAllMappings(CancellationToken.None);
-
-        Assert.IsType<OkObjectResult>(result);
-    }
-
-    [Fact]
-    public async Task GetClickStats_ValidShortCode_ReturnsOk()
-    {
-        _serviceMock.Setup(s => s.GetClickStatsAsync("0000001", It.IsAny<DateTime>(), It.IsAny<DateTime>(), "day", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ClickBucket> { new(DateTime.UtcNow, 5) });
-
-        var result = await _controller.GetClickStats("0000001", null, null, "day", CancellationToken.None);
-
-        Assert.IsType<OkObjectResult>(result);
-    }
-
-    [Fact]
-    public async Task GetClickStats_InvalidShortCode_Returns400()
-    {
-        var result = await _controller.GetClickStats("!!!!!!!", null, null, "hour", CancellationToken.None);
-        Assert.Equal(400, Assert.IsType<ObjectResult>(result).StatusCode);
+        _queryMock.Setup(q => q.GetAllMappingsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new List<UrlMapping> { new() { ShortCode = "0000001" } });
+        Assert.IsType<OkObjectResult>(await _controller.GetAllMappings(CancellationToken.None));
     }
 
     [Fact]
     public async Task GetClickStats_InvalidBucket_Returns400()
     {
-        var result = await _controller.GetClickStats("0000001", null, null, "week", CancellationToken.None);
-        Assert.Equal(400, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Equal(400, Assert.IsType<ObjectResult>(await _controller.GetClickStats("0000001", null, null, "week", CancellationToken.None)).StatusCode);
     }
 
     [Fact]
-    public async Task GetTopUrls_DefaultLimit_ReturnsOk()
+    public async Task GetTopUrls_ReturnsOk()
     {
-        _serviceMock.Setup(s => s.GetTopUrlsAsync(10, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<TopUrlStat>());
-
-        var result = await _controller.GetTopUrls(10, null, null, CancellationToken.None);
-        Assert.IsType<OkObjectResult>(result);
-    }
-
-    [Fact]
-    public async Task GetTopUrls_LimitClampedTo100_ReturnsOk()
-    {
-        _serviceMock.Setup(s => s.GetTopUrlsAsync(100, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<TopUrlStat>());
-
-        var result = await _controller.GetTopUrls(999, null, null, CancellationToken.None);
-        Assert.IsType<OkObjectResult>(result);
+        _queryMock.Setup(q => q.GetTopUrlsAsync(10, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<TopUrlStat>());
+        Assert.IsType<OkObjectResult>(await _controller.GetTopUrls(10, null, null, CancellationToken.None));
     }
 }

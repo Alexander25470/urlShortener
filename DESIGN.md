@@ -47,6 +47,23 @@ graph TD
     API -->|/metrics| Prometheus[Prometheus Scraper]
 ```
 
+### Preparado para División en Microservicios
+
+La separación por responsabilidades (CQRS + bases de datos aisladas) deja el diseño listo para dividirse en 3 microservicios independientes:
+
+| Microservicio | Responsabilidad | Persistencia | Interfaces |
+|---|---|---|---|
+| **🔗 URL Shortener** | Acortar URLs (escribir `url_mappings` + `counters`) | mongodb-main | `IUrlShortenerCommand.ShortenAsync` |
+| **↪️ Redirect** | Resolver shortCode → longUrl (leer `url_mappings`) | mongodb-main | `IUrlMappingQuery.GetLongUrlAsync` |
+| **📊 Analytics** | Registrar clicks + consultas analíticas (leer/escribir `clicks`) | mongodb-analytics | `IUrlShortenerCommand.RecordClickAsync` + `IUrlAnalyticsQuery` |
+
+Cada microservicio sería un proceso independiente con su propio `WebApplication`, su propio pool de conexiones a MongoDB y su propio despliegue Docker. Las interfaces ya están definidas y aisladas — no hay dependencias circulares ni acoplamiento oculto. La comunicación entre ellos sería vía HTTP interno (o un message broker si se requiere mayor desacoplamiento).
+
+Los beneficios de dividir serían:
+- **Escalado independiente** — Redirect requiere más réplicas (10:1 lectura/escritura), Analytics puede escalar según volumen de clicks.
+- **Aislamiento de fallos** — Una sobrecarga en Analytics no afecta los redirects.
+- **Equipos independientes** — Cada servicio puede ser mantenido por un equipo distinto.
+
 ### Flujo de Acortamiento
 
 ```mermaid

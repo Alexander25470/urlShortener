@@ -5,6 +5,8 @@ using Scalar.AspNetCore;
 using UrlShortener.Api;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.Services;
+using UrlShortener.Api.Services.Commands;
+using UrlShortener.Api.Services.Queries;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,7 +37,7 @@ builder.Services.AddSingleton(sp =>
 });
 
 // ── Services ───────────────────────────────────────────────────
-builder.Services.AddSingleton<IUrlShortenerService>(sp =>
+builder.Services.AddSingleton<IUrlShortenerCommand>(sp =>
 {
     var urlMappings = sp.GetRequiredService<IMongoCollection<UrlMapping>>();
     var clicks = sp.GetRequiredService<IMongoCollection<ClickEvent>>();
@@ -43,12 +45,21 @@ builder.Services.AddSingleton<IUrlShortenerService>(sp =>
     var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<UrlShortenerOptions>>();
     var meterFactory = sp.GetRequiredService<System.Diagnostics.Metrics.IMeterFactory>();
 
-    return new UrlShortenerService(
-        urlMappings,
-        clicks,
-        mainClient,
-        options.Value.BaseUrl,
-        meterFactory);
+    return new UrlShortenerCommand(urlMappings, clicks, mainClient, options.Value.BaseUrl, meterFactory);
+});
+
+builder.Services.AddSingleton<IUrlAnalyticsQuery>(sp =>
+{
+    var urlMappings = sp.GetRequiredService<IMongoCollection<UrlMapping>>();
+    var clicks = sp.GetRequiredService<IMongoCollection<ClickEvent>>();
+    return new UrlAnalyticsQuery(urlMappings, clicks);
+});
+
+builder.Services.AddSingleton<IUrlMappingQuery>(sp =>
+{
+    var urlMappings = sp.GetRequiredService<IMongoCollection<UrlMapping>>();
+    var meterFactory = sp.GetRequiredService<System.Diagnostics.Metrics.IMeterFactory>();
+    return new UrlMappingQuery(urlMappings, meterFactory);
 });
 
 // ── MongoDB initializer ────────────────────────────────────────

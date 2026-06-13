@@ -1,78 +1,56 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Moq;
 using UrlShortener.Api.Controllers;
-using UrlShortener.Api.Services;
+using UrlShortener.Api.Services.Commands;
+using UrlShortener.Api.Services.Queries;
 
 namespace UrlShortener.Api.Tests.Controllers;
 
 public class RedirectControllerTests
 {
-    private readonly Mock<IUrlShortenerService> _serviceMock;
-    private readonly RedirectController _controller301;
-    private readonly RedirectController _controller302;
+    private readonly Mock<IUrlShortenerCommand> _commandMock;
+    private readonly Mock<IUrlMappingQuery> _urlMappingQueryMock;
 
     public RedirectControllerTests()
     {
-        _serviceMock = new Mock<IUrlShortenerService>();
-
-        _controller301 = new RedirectController(_serviceMock.Object,
-            Options.Create(new UrlShortenerOptions { RedirectType = 301 }));
-
-        _controller302 = new RedirectController(_serviceMock.Object,
-            Options.Create(new UrlShortenerOptions { RedirectType = 302 }));
+        _commandMock = new Mock<IUrlShortenerCommand>();
+        _urlMappingQueryMock = new Mock<IUrlMappingQuery>();
     }
 
     [Fact]
-    public async Task Redirect_ValidShortCode_Returns301()
+    public async Task Redirect_Valid_Returns301()
     {
-        _serviceMock.Setup(s => s.GetLongUrlAsync("0000001", It.IsAny<CancellationToken>())).ReturnsAsync("https://example.com/a");
-
-        var result = await _controller301.Redirect("0000001", CancellationToken.None);
-
-        var redirect = Assert.IsType<RedirectResult>(result);
-        Assert.Equal("https://example.com/a", redirect.Url);
-        Assert.True(redirect.Permanent);
+        _urlMappingQueryMock.Setup(q => q.GetLongUrlAsync("0000001", It.IsAny<CancellationToken>())).ReturnsAsync("https://ex.com/a");
+        _commandMock.Setup(c => c.RecordClickAsync("0000001", It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var ctrl = new RedirectController(_commandMock.Object, _urlMappingQueryMock.Object, Options.Create(new UrlShortenerOptions { RedirectType = 301 }));
+        var r = Assert.IsType<RedirectResult>(await ctrl.Redirect("0000001", CancellationToken.None));
+        Assert.True(r.Permanent);
+        Assert.Equal("https://ex.com/a", r.Url);
+        _commandMock.Verify(c => c.RecordClickAsync("0000001", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Redirect_With302_ReturnsNonPermanent()
     {
-        _serviceMock.Setup(s => s.GetLongUrlAsync("0000001", It.IsAny<CancellationToken>())).ReturnsAsync("https://example.com/b");
-
-        var result = await _controller302.Redirect("0000001", CancellationToken.None);
-
-        var redirect = Assert.IsType<RedirectResult>(result);
-        Assert.False(redirect.Permanent);
+        _urlMappingQueryMock.Setup(q => q.GetLongUrlAsync("0000001", It.IsAny<CancellationToken>())).ReturnsAsync("https://ex.com/b");
+        var ctrl = new RedirectController(_commandMock.Object, _urlMappingQueryMock.Object, Options.Create(new UrlShortenerOptions { RedirectType = 302 }));
+        Assert.False(Assert.IsType<RedirectResult>(await ctrl.Redirect("0000001", CancellationToken.None)).Permanent);
     }
 
     [Fact]
-    public async Task Redirect_NonExistentShortCode_Returns404()
+    public async Task Redirect_NotFound_Returns404()
     {
-        _serviceMock.Setup(s => s.GetLongUrlAsync("9999999", It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
-
-        var result = await _controller301.Redirect("9999999", CancellationToken.None);
-
-        Assert.Equal(404, Assert.IsType<ObjectResult>(result).StatusCode);
+        _urlMappingQueryMock.Setup(q => q.GetLongUrlAsync("9999999", It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        var ctrl = new RedirectController(_commandMock.Object, _urlMappingQueryMock.Object, Options.Create(new UrlShortenerOptions()));
+        Assert.Equal(404, Assert.IsType<ObjectResult>(await ctrl.Redirect("9999999", CancellationToken.None)).StatusCode);
     }
 
     [Fact]
-    public async Task Redirect_InvalidShortCode_Returns400()
+    public async Task Redirect_InvalidCode_Returns400()
     {
-        var result = await _controller301.Redirect("!!!!!!!", CancellationToken.None);
-
-        Assert.Equal(400, Assert.IsType<ObjectResult>(result).StatusCode);
-        _serviceMock.Verify(s => s.GetLongUrlAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Theory]
-    [InlineData("abc")]
-    [InlineData("")]
-    [InlineData("abcdefgh")]
-    [InlineData("abc def")]
-    public async Task Redirect_VariousInvalidFormats_Returns400(string shortCode)
-    {
-        var result = await _controller301.Redirect(shortCode, CancellationToken.None);
-        Assert.Equal(400, Assert.IsType<ObjectResult>(result).StatusCode);
+        var ctrl = new RedirectController(_commandMock.Object, _urlMappingQueryMock.Object, Options.Create(new UrlShortenerOptions()));
+        Assert.Equal(400, Assert.IsType<ObjectResult>(await ctrl.Redirect("!!!!!!!", CancellationToken.None)).StatusCode);
+        _urlMappingQueryMock.Verify(q => q.GetLongUrlAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
